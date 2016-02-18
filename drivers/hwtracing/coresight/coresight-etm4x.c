@@ -360,32 +360,43 @@ static void etm4_disable_sysfs(struct coresight_device *csdev)
 	dev_info(drvdata->dev, "ETM tracing disabled\n");
 }
 
-static void etm4_disable(struct coresight_device *csdev)
-{
-	u32 mode;
-	struct etmv4_drvdata *drvdata = dev_get_drvdata(csdev->dev.parent);
 
-	/*
-	 * For as long as the tracer isn't disabled another entity can't
-	 * change its status.  As such we can read the status here without
-	 * fearing it will change under us.
-	 */
-	mode = local_read(&drvdata->mode);
+#define coresight_simple_func(name, offset)				\
+static ssize_t name##_show(struct device *_dev,				\
+			   struct device_attribute *attr, char *buf)	\
+{									\
+	struct etmv4_drvdata *drvdata = dev_get_drvdata(_dev->parent);	\
+	return scnprintf(buf, PAGE_SIZE, "0x%x\n",			\
+			 readl_relaxed(drvdata->base + offset));	\
+}									\
+static DEVICE_ATTR_RO(name)
 
-	switch (mode) {
-	case CS_MODE_DISABLED:
-		break;
-	case CS_MODE_SYSFS:
-		etm4_disable_sysfs(csdev);
-		break;
-	case CS_MODE_PERF:
-		etm4_disable_perf(csdev);
-		break;
-	}
+coresight_simple_func(trcoslsr, TRCOSLSR);
+coresight_simple_func(trcpdcr, TRCPDCR);
+coresight_simple_func(trcpdsr, TRCPDSR);
+coresight_simple_func(trclsr, TRCLSR);
+coresight_simple_func(trcauthstatus, TRCAUTHSTATUS);
+coresight_simple_func(trcdevid, TRCDEVID);
+coresight_simple_func(trcdevtype, TRCDEVTYPE);
+coresight_simple_func(trcpidr0, TRCPIDR0);
+coresight_simple_func(trcpidr1, TRCPIDR1);
+coresight_simple_func(trcpidr2, TRCPIDR2);
+coresight_simple_func(trcpidr3, TRCPIDR3);
 
-	if (mode)
-		local_set(&drvdata->mode, CS_MODE_DISABLED);
-}
+static struct attribute *coresight_etmv4_mgmt_attrs[] = {
+	&dev_attr_trcoslsr.attr,
+	&dev_attr_trcpdcr.attr,
+	&dev_attr_trcpdsr.attr,
+	&dev_attr_trclsr.attr,
+	&dev_attr_trcauthstatus.attr,
+	&dev_attr_trcdevid.attr,
+	&dev_attr_trcdevtype.attr,
+	&dev_attr_trcpidr0.attr,
+	&dev_attr_trcpidr1.attr,
+	&dev_attr_trcpidr2.attr,
+	&dev_attr_trcpidr3.attr,
+	NULL,
+};
 
 static const struct coresight_ops_source etm4_source_ops = {
 	.cpu_id		= etm4_cpu_id,
