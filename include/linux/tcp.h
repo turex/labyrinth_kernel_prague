@@ -218,13 +218,11 @@ struct tcp_sock {
 	} rack;
 	u16	advmss;		/* Advertised MSS			*/
 #ifdef CONFIG_TCP_CONG_BBR
-	u8	rate_app_limited:1,  /* rate_{delivered,interval_us} limited? */
-		unused:7;
-#else
+	u8	rate_app_limited:1;  /* rate_{delivered,interval_us} limited? */
+#endif
 	u8	tlp_retrans:1,	/* TLP is a retransmission */
 		unused_1:7;
-#endif
-		u8	nonagle     : 4,/* Disable Nagle algorithm?             */
+    u8	nonagle     : 4,/* Disable Nagle algorithm?             */
 		thin_lto    : 1,/* Use linear timeouts for thin streams */
 		thin_dupack : 1,/* Fast retransmit on first dupack      */
 		repair      : 1,
