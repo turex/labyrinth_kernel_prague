@@ -137,7 +137,7 @@ static int snd_rawmidi_runtime_create(struct snd_rawmidi_substream *substream)
 		runtime->avail = 0;
 	else
 		runtime->avail = runtime->buffer_size;
-	if ((runtime->buffer = kmalloc(runtime->buffer_size, GFP_KERNEL)) == NULL) {
+	if ((runtime->buffer = kzalloc(runtime->buffer_size, GFP_KERNEL)) == NULL) {
 		kfree(runtime);
 		return -ENOMEM;
 	}
@@ -664,31 +664,22 @@ int snd_rawmidi_output_params(struct snd_rawmidi_substream *substream,
 		return -EINVAL;
 	}
 	if (params->buffer_size != runtime->buffer_size) {
-		mutex_lock(&runtime->realloc_mutex);
-		newbuf = __krealloc(runtime->buffer, params->buffer_size,
-				  GFP_KERNEL);
-		if (!newbuf) {
-			mutex_unlock(&runtime->realloc_mutex);
+		newbuf = kzalloc(params->buffer_size, GFP_KERNEL);
+		if (!newbuf)
 			return -ENOMEM;
-<<<<<<< HEAD
-		}
-		spin_lock_irqsave(&runtime->lock, flags);
-=======
+
 		spin_lock_irq(&runtime->lock);
 		if (runtime->buffer_ref) {
 			spin_unlock_irq(&runtime->lock);
 			kfree(newbuf);
 			return -EBUSY;
 		}
->>>>>>> 718eede1eeb6 (ALSA: rawmidi: Fix racy buffer resize under concurrent accesses)
 		oldbuf = runtime->buffer;
 		runtime->buffer = newbuf;
 		runtime->buffer_size = params->buffer_size;
 		runtime->avail = runtime->buffer_size;
-		spin_unlock_irqrestore(&runtime->lock, flags);
-		if (oldbuf != newbuf)
-			kfree(oldbuf);
-		mutex_unlock(&runtime->realloc_mutex);
+		spin_unlock_irq(&runtime->lock);
+		kfree(oldbuf);
 	}
 	runtime->avail_min = params->avail_min;
 	substream->active_sensing = !params->no_active_sensing;
