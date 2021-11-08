@@ -3803,9 +3803,7 @@ int build_segment_manager(struct f2fs_sb_info *sbi)
 		return err;
 
 	/* reinit free segmap based on SIT */
-	err = build_sit_entries(sbi);
-    if (err)
-		return err;
+	build_sit_entries(sbi);
 
 	init_free_segmap(sbi);
 	err = build_dirty_segmap(sbi);
