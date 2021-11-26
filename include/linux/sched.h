@@ -233,10 +233,9 @@ extern void proc_sched_set_task(struct task_struct *p);
 #define TASK_WAKING		256
 #define TASK_PARKED		512
 #define TASK_NOLOAD		1024
-#define TASK_NEW		2048
-#define TASK_STATE_MAX		4096
+#define TASK_STATE_MAX		2048
 
-#define TASK_STATE_TO_CHAR_STR "RSDTtXZxKWPNn"
+#define TASK_STATE_TO_CHAR_STR "RSDTtXZxKWPN"
 
 extern char ___assert_task_state[1 - 2*!!(
 		sizeof(TASK_STATE_TO_CHAR_STR)-1 != ilog2(TASK_STATE_MAX)+1)];
@@ -1042,13 +1041,12 @@ struct wake_q_node {
 struct wake_q_head {
 	struct wake_q_node *first;
 	struct wake_q_node **lastp;
-	int count;
 };
 
 #define WAKE_Q_TAIL ((struct wake_q_node *) 0x01)
 
 #define WAKE_Q(name)					\
-	struct wake_q_head name = { WAKE_Q_TAIL, &name.first, 0 }
+	struct wake_q_head name = { WAKE_Q_TAIL, &name.first }
 
 extern void wake_q_add(struct wake_q_head *head,
 		       struct task_struct *task);
@@ -1065,7 +1063,7 @@ extern void wake_up_q(struct wake_q_head *head);
 #define SD_BALANCE_WAKE		0x0010  /* Balance on wakeup */
 #define SD_WAKE_AFFINE		0x0020	/* Wake task to waking CPU */
 #define SD_ASYM_CPUCAPACITY	0x0040  /* Groups have different max cpu capacities */
-#define SD_SHARE_CPUCAPACITY	0x0080	/* Domain members share cpu capacity */
+#define SD_SHARE_CPUCAPACITY	0x0080	/* Domain members share cpu power */
 #define SD_SHARE_POWERDOMAIN	0x0100	/* Domain members share power domain */
 #define SD_SHARE_PKG_RESOURCES	0x0200	/* Domain members share cpu pkg resources */
 #define SD_SERIALIZE		0x0400	/* Only a single load balancing instance */
@@ -1129,37 +1127,9 @@ struct sched_group;
 struct sched_domain_shared {
 	atomic_t	ref;
 	bool		overutilized;
-};
-
-struct eas_stats {
-	/* select_idle_sibling() stats */
-	u64 sis_attempts;
-	u64 sis_idle;
-	u64 sis_cache_affine;
-	u64 sis_suff_cap;
-	u64 sis_idle_cpu;
-	u64 sis_count;
-
-	/* select_energy_cpu_brute() stats */
-	u64 secb_attempts;
-	u64 secb_sync;
-	u64 secb_idle_bt;
-	u64 secb_insuff_cap;
-	u64 secb_no_nrg_sav;
-	u64 secb_nrg_sav;
-	u64 secb_count;
-
-	/* find_best_target() stats */
-	u64 fbt_attempts;
-	u64 fbt_no_cpu;
-	u64 fbt_no_sd;
-	u64 fbt_pref_idle;
-	u64 fbt_count;
-
-	/* cas */
-	/* select_task_rq_fair() stats */
-	u64 cas_attempts;
-	u64 cas_count;
+#ifdef CONFIG_HISI_EAS_SCHED
+	bool		overloaded;
+#endif
 };
 
 struct sched_domain {
@@ -1222,8 +1192,6 @@ struct sched_domain {
 	unsigned int ttwu_wake_remote;
 	unsigned int ttwu_move_affine;
 	unsigned int ttwu_move_balance;
-
-	struct eas_stats eas_stats;
 #endif
 #ifdef CONFIG_SCHED_DEBUG
 	char *name;
@@ -1384,35 +1352,6 @@ struct sched_statistics {
 	u64			nr_wakeups_affine_attempts;
 	u64			nr_wakeups_passive;
 	u64			nr_wakeups_idle;
-
-	/* select_idle_sibling() */
-	u64			nr_wakeups_sis_attempts;
-	u64			nr_wakeups_sis_idle;
-	u64			nr_wakeups_sis_cache_affine;
-	u64			nr_wakeups_sis_suff_cap;
-	u64			nr_wakeups_sis_idle_cpu;
-	u64			nr_wakeups_sis_count;
-
-	/* energy_aware_wake_cpu() */
-	u64			nr_wakeups_secb_attempts;
-	u64			nr_wakeups_secb_sync;
-	u64			nr_wakeups_secb_idle_bt;
-	u64			nr_wakeups_secb_insuff_cap;
-	u64			nr_wakeups_secb_no_nrg_sav;
-	u64			nr_wakeups_secb_nrg_sav;
-	u64			nr_wakeups_secb_count;
-
-	/* find_best_target() */
-	u64			nr_wakeups_fbt_attempts;
-	u64			nr_wakeups_fbt_no_cpu;
-	u64			nr_wakeups_fbt_no_sd;
-	u64			nr_wakeups_fbt_pref_idle;
-	u64			nr_wakeups_fbt_count;
-
-	/* cas */
-	/* select_task_rq_fair() */
-	u64			nr_wakeups_cas_attempts;
-	u64			nr_wakeups_cas_count;
 };
 #endif
 
@@ -1488,10 +1427,6 @@ struct sched_rt_entity {
 	unsigned long timeout;
 	unsigned long watchdog_stamp;
 	unsigned int time_slice;
-
-	/* Accesses for these must be guarded by rq->lock of the task's rq */
-	bool schedtune_enqueued;
-	struct hrtimer schedtune_timer;
 
 	struct sched_rt_entity *back;
 #ifdef CONFIG_RT_GROUP_SCHED
@@ -1782,10 +1717,6 @@ struct task_struct {
 	cputime_t gtime;
 #ifdef CONFIG_CPU_FREQ_POWER_STAT
 	unsigned long long cpu_power;
-#endif
-#ifdef CONFIG_CPU_FREQ_TIMES
-	u64 *time_in_state;
-	unsigned int max_state;
 #endif
 	struct prev_cputime prev_cputime;
 #ifdef CONFIG_VIRT_CPU_ACCOUNTING_GEN
@@ -2080,11 +2011,11 @@ struct task_struct {
 	/* Coverage collection mode enabled for this task (0 if disabled). */
 	enum kcov_mode kcov_mode;
 	/* Size of the kcov_area. */
-	unsigned	kcov_size;
+	unsigned kcov_size;
 	/* Buffer for coverage collection. */
-	void		*kcov_area;
+	void *kcov_area;
 	/* kcov desciptor wired with this task or NULL. */
-	struct kcov	*kcov;
+	struct kcov *kcov;
 #endif
 #ifdef CONFIG_MEMCG
 	struct mem_cgroup *memcg_in_oom;
@@ -2229,7 +2160,6 @@ static inline pid_t task_tgid_nr(struct task_struct *tsk)
 {
 	return tsk->tgid;
 }
-
 
 static inline int pid_alive(const struct task_struct *p);
 
@@ -2919,11 +2849,6 @@ static inline bool mmget_not_zero(struct mm_struct *mm)
 
 /* mmput gets rid of the mappings and all user-space */
 extern void mmput(struct mm_struct *);
-/* same as above but performs the slow path from the async kontext. Can
- * be called from the atomic context as well
- */
-extern void mmput_async(struct mm_struct *);
-
 /* Grab a reference to a task's mm, if it is not already going away */
 extern struct mm_struct *get_task_mm(struct task_struct *task);
 /*
@@ -3194,14 +3119,6 @@ static inline unsigned long *end_of_stack(struct task_struct *p)
 }
 
 #endif
-
-static inline void *try_get_task_stack(struct task_struct *tsk)
-{
-	return task_stack_page(tsk);
-}
-
-static inline void put_task_stack(struct task_struct *tsk) {}
-
 #define task_stack_end_corrupted(task) \
 		(*(end_of_stack(task)) != STACK_END_MAGIC)
 
@@ -3212,7 +3129,7 @@ static inline int object_is_on_stack(void *obj)
 	return (obj >= stack) && (obj < (stack + THREAD_SIZE));
 }
 
-extern void thread_stack_cache_init(void);
+extern void thread_info_cache_init(void);
 
 #ifdef CONFIG_DEBUG_STACK_USAGE
 static inline unsigned long stack_not_used(struct task_struct *p)
